@@ -187,118 +187,212 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
    
     return country_data
 
-#####################################
-# Streamlit App
-st.title("UNHCR Geodata Extractor")
 
-country_list: List[str] = list_countries()
-country_code = st.sidebar.selectbox("Select a country:", country_list)
-
-buffer_size_points = st.sidebar.slider("Select buffer size for points", min_value=0.001, max_value=0.1, value=0.01, step=0.001)
-
-buffer_size_poly = st.sidebar.slider("Select buffer size for polygons", min_value=0.001, max_value=0.1, value=0.0, step=0.001)
-
-if st.sidebar.button("Process Country"):
-    if country_code:
-        st.write(f"Processing country: {country_code} with buffer size for points: {buffer_size_points}")
-        country_data = process_country(country_code, buffer_size_points,buffer_size_poly)
-        if country_data:
-            st.session_state['country_data'] = country_data
-    else:
-        st.warning("Please select a country")
-
-# Display Features and Export Option
-if 'country_data' in st.session_state:
-    features = st.session_state['country_data']['features']
+# Streamlit App with Tabbed Interface
+def main():
+    st.set_page_config(page_title="UNHCR Geodata Extractor", layout="wide")
     
-    # Display all features as a single list if filtering is not applicable
-    all_feature_labels = [f"{feature['properties'].get('name', 'N/A')} ({feature['properties'].get('feature_type', 'N/A')})" for feature in features]
+    # Get current tab from session state or initialize it
+    if "active_tab" not in st.session_state:
+        st.session_state.active_tab = 0
     
-    # Feature selection for viewing details
-    selected_label = st.selectbox("Select a feature to view details:", all_feature_labels)
+    # Handle query parameters to switch tabs
+    query_params = st.experimental_get_query_params()
+    if "tab" in query_params:
+        try:
+            st.session_state.active_tab = int(query_params["tab"][0])
+        except ValueError:
+            st.session_state.active_tab = 0
+
+
+    # Create tabs
+    tab1, tab2, tab3 = st.tabs([
+        "1. Select a country and buffer settings", 
+        "2. Review", 
+        "3. Export Data"
+    ])
     
-    # Check if a valid selection was made
-    selected_feature = next((feature for feature, label in zip(features, all_feature_labels) if label == selected_label), None)
-    
-    # Only proceed if a feature was found
-    if selected_feature is not None:
-        # Extract geometry from selected feature
-        selected_feature_geometry = selected_feature['geometry']
-
-        # Get coordinates for map centering based on geometry type
-        if selected_feature_geometry['type'] == 'Polygon':
-            coordinates = selected_feature_geometry['coordinates'][0][0]
-        elif selected_feature_geometry['type'] == 'MultiPolygon':
-            coordinates = selected_feature_geometry['coordinates'][0][0][0]
-        else:
-            coordinates = selected_feature_geometry['coordinates']  # For Point geometries
-
-        # Create and display map
-        m = folium.Map(location=[coordinates[1], coordinates[0]], zoom_start=12, width='100%', height='700')
-        folium.TileLayer(
-            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            attr='ArcGIS World Imagery'
-        ).add_to(m)
-
-        # Add all features to the map
-        for feature in features:
-            if feature['geometry']['type'] in ['Polygon', 'MultiPolygon']:
-                # Highlight selected feature
-                style = {'color': 'red', 'weight': 3} if feature == selected_feature else {'color': 'blue', 'weight': 2}
-                folium.GeoJson(
-                    feature,
-                    style_function=lambda x, style=style: style
-                ).add_to(m)
+    with tab1:
+        st.header("Select Country")
+        # Country Selection
+        country_list: List[str] = list_countries()
+        country_code = st.selectbox("Choose a country:", country_list, key="country_select")
         
-        st_folium(m, width=900, height=600)
-    
-    else:
-        st.warning("Please select a valid feature to view details.")
-
-    # Fix renaming
-    for feature in features:
-        if 'pcode' in feature['properties']:
-            feature['properties']['site_code'] = feature['properties'].pop('pcode')
-        if 'gis_name' in feature['properties']:
-            feature['properties']['name'] = feature['properties'].pop('gis_name')
-
-    # Select features to export
-    st.write("### Select Features to Export")
-
-    # Selection for export
-    selected_features_to_export = st.multiselect(
-        "Select features to export:",
-        options=all_feature_labels,
-        default=all_feature_labels if st.checkbox("Select All Features") else []
-    )
-
-    # Download selected features
-    if st.button("Generate GeoJSON file"):
-        if not selected_features_to_export:
-            st.error("No feature selected. Please select at least one feature.")
+        if country_code:
+            # st.success(f"Selected Country: {country_code}")
+            st.session_state['selected_country'] = country_code
         else:
-            filtered_output_file = f"{EXPORT_FOLDER}/{country_code}_filtered_polygons.geojson"
-            filtered_features = [
-                feature for feature, label in zip(features, all_feature_labels)
-                if label in selected_features_to_export
+            st.warning("Please select a country.")
+
+        st.header("Configure Buffer Settings")
+        
+        # Ensure a country is selected first
+        if 'selected_country' not in st.session_state:
+            st.warning("Please select a country in the first tab before configuring buffers.")
+        else:
+            # Buffer Size Configuration
+            buffer_size_points = st.slider(
+                "Buffer Size for Points", 
+                min_value=0.001, 
+                max_value=0.1, 
+                value=0.01, 
+                step=0.001,
+                help="Determines the size of the buffer around point features"
+            )
+            
+            buffer_size_poly = st.slider(
+                "Buffer Size for Polygons", 
+                min_value=0.001, 
+                max_value=0.1, 
+                value=0.0, 
+                step=0.001,
+                help="Determines the size of the buffer around polygon features"
+            )
+            
+            if st.button("Process Geodata", key="process_data"):
+                with st.spinner("Processing geodata..."):
+                    country_data = process_country(
+                        st.session_state['selected_country'], 
+                        buffer_size_points, 
+                        buffer_size_poly
+                    )
+                    
+                    if country_data:
+                        st.session_state['country_data'] = country_data
+                        st.success("Data processed successfully!")
+                        st.experimental_set_query_params(tab=3)
+                    else:
+                        st.error("Failed to process country data.")
+
+            
+    with tab2:
+        st.header("Visualize Geodata")
+        
+        # Ensure data has been processed
+        if 'country_data' not in st.session_state:
+            st.warning("Please process data in the previous tab.")
+        else:
+            features = st.session_state['country_data']['features']
+            
+            # Feature selection and map display
+            all_feature_labels = [
+                f"{feature['properties'].get('name', 'N/A')} ({feature['properties'].get('feature_type', 'N/A')})" 
+                for feature in features
             ]
-
-            filtered_data = {
-                "type": "FeatureCollection",
-                "features": filtered_features
-            }
-
-            # display message
-            st.success(f"Exported {len(filtered_features)} features to {filtered_output_file}")
-
-            with open(filtered_output_file, 'w') as f:
-                json.dump(filtered_data, f, indent=4)
-
-            # Directly download the file
-            with open(filtered_output_file, 'r') as f:
-                st.download_button(
-                    label="Download Filtered GeoJSON",
-                    data=f,
-                    file_name=f"{country_code}_filtered_polygons.geojson",
-                    mime="application/geo+json"
+            
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                selected_label = st.selectbox(
+                    "Select a feature to view:", 
+                    all_feature_labels
                 )
+            
+            # Map rendering logic remains the same as in previous script
+            selected_feature = next(
+                (feature for feature, label in zip(features, all_feature_labels) if label == selected_label), 
+                None
+            )
+            
+            if selected_feature is not None:
+                with col2:
+                    selected_feature_geometry = selected_feature['geometry']
+
+                    # Get coordinates for map centering
+                    if selected_feature_geometry['type'] == 'Polygon':
+                        coordinates = selected_feature_geometry['coordinates'][0][0]
+                    elif selected_feature_geometry['type'] == 'MultiPolygon':
+                        coordinates = selected_feature_geometry['coordinates'][0][0][0]
+                    else:
+                        coordinates = selected_feature_geometry['coordinates']
+
+                    # Create and display map
+                    m = folium.Map(location=[coordinates[1], coordinates[0]], zoom_start=12)
+                    folium.TileLayer(
+                        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                        attr='ArcGIS World Imagery'
+                    ).add_to(m)
+
+                    # Add features to map
+                    for feature in features:
+                        if feature['geometry']['type'] in ['Polygon', 'MultiPolygon']:
+                            style = (
+                                {'color': 'red', 'weight': 3} 
+                                if feature == selected_feature 
+                                else {'color': 'blue', 'weight': 2}
+                            )
+                            folium.GeoJson(
+                                feature,
+                                style_function=lambda x, style=style: style
+                            ).add_to(m)
+                    
+                    st_folium(m, width=700, height=500)
+    
+    with tab3:
+        st.header("Export Geodata")
+        
+        # Ensure data has been processed
+        if 'country_data' not in st.session_state:
+            st.warning("Please process data in the previous tabs.")
+        else:
+            features = st.session_state['country_data']['features']
+            
+            # Fix renaming
+            for feature in features:
+                if 'pcode' in feature['properties']:
+                    feature['properties']['site_code'] = feature['properties'].pop('pcode')
+                if 'gis_name' in feature['properties']:
+                    feature['properties']['name'] = feature['properties'].pop('gis_name')
+            
+            all_feature_labels = [
+                f"{feature['properties'].get('name', 'N/A')} ({feature['properties'].get('feature_type', 'N/A')})" 
+                for feature in features
+            ]
+            
+            st.write("### Select Features to Export")
+            
+            # Select features to export
+            selected_features_to_export = st.multiselect(
+                "Select features to export:",
+                options=all_feature_labels,
+                default=all_feature_labels if st.checkbox("Select All Features") else []
+            )
+            
+            # Download selected features
+            if st.button("Generate GeoJSON file"):
+                if not selected_features_to_export:
+                    st.error("No feature selected. Please select at least one feature.")
+                else:
+                    # Create export folder if it doesn't exist
+                    if not os.path.exists(EXPORT_FOLDER):
+                        os.makedirs(EXPORT_FOLDER)
+                    
+                    filtered_output_file = f"{EXPORT_FOLDER}/{st.session_state['selected_country']}_filtered_polygons.geojson"
+                    
+                    filtered_features = [
+                        feature for feature, label in zip(features, all_feature_labels)
+                        if label in selected_features_to_export
+                    ]
+
+                    filtered_data = {
+                        "type": "FeatureCollection",
+                        "features": filtered_features
+                    }
+
+                    with open(filtered_output_file, 'w') as f:
+                        json.dump(filtered_data, f, indent=4)
+
+                    # Directly download the file
+                    with open(filtered_output_file, 'r') as f:
+                        st.download_button(
+                            label="Download Filtered GeoJSON",
+                            data=f,
+                            file_name=f"{st.session_state['selected_country']}_filtered_polygons.geojson",
+                            mime="application/geo+json"
+                        )
+                    
+                    st.success(f"Exported {len(filtered_features)} features to {filtered_output_file}")
+
+# Run the Streamlit app
+if __name__ == "__main__":
+    main()
