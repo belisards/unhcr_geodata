@@ -68,9 +68,6 @@ def query_points(country_code: str, site_codes: List[str]) -> Dict[str, Any]:
         response = session.get(url, params=params)
         response.raise_for_status()
         data: Dict[str, Any] = response.json()
-        if data["features"]:
-            for feature in data["features"]:
-                feature['properties']['prefixed_gis_name'] = f"POINT_{feature['properties']['gis_name']}"
         # add metadata indicating it is a point
         data['feature_type'] = 'Point'
         return data
@@ -158,7 +155,7 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
     
     # Add feature type to official polygon features
     for feature in official_polygons['features']:
-        feature['properties']['feature_type'] = 'Official Polygon'
+        feature['properties']['feature_type'] = 'Polygon'
     
     # Get points
     site_codes: List[str] = extract_site_codes(official_polygons)
@@ -174,7 +171,7 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
     
     # Add feature type to generated point polygons
     for feature in generated_polygons.get("features", []):
-        feature['properties']['feature_type'] = 'Generated Polygon'
+        feature['properties']['feature_type'] = 'Point'
     
     # Merge polygons
     country_polygons: List[Dict[str, Any]] = official_polygons["features"]
@@ -214,61 +211,65 @@ if st.sidebar.button("Process Country"):
 if 'country_data' in st.session_state:
     features = st.session_state['country_data']['features']
     
-    # Keep the actual feature objects to access their properties later
-    feature_options = features
-
-    # Create a formatted list for display purposes in the selectbox
-    feature_labels = [f"{feature['properties'].get('site_code', 'N/A')} - {feature['properties'].get('name', 'N/A')} ({feature['properties'].get('feature_type', 'N/A')})" for feature in feature_options]
-
-    selected_label = st.selectbox("Select a feature to view details:", feature_labels)
-
-    # Find the corresponding feature based on the selected label
-    selected_feature = next(feature for feature, label in zip(feature_options, feature_labels) if label == selected_label)
+    # Display all features as a single list if filtering is not applicable
+    all_feature_labels = [f"{feature['properties'].get('name', 'N/A')} ({feature['properties'].get('feature_type', 'N/A')})" for feature in features]
     
-    # Extract geometry from selected feature
-    selected_feature_geometry = selected_feature['geometry']
+    # Feature selection for viewing details
+    selected_label = st.selectbox("Select a feature to view details:", all_feature_labels)
+    
+    # Check if a valid selection was made
+    selected_feature = next((feature for feature, label in zip(features, all_feature_labels) if label == selected_label), None)
+    
+    # Only proceed if a feature was found
+    if selected_feature is not None:
+        # Extract geometry from selected feature
+        selected_feature_geometry = selected_feature['geometry']
 
-    # Get coordinates for map centering based on geometry type
-    if selected_feature_geometry['type'] == 'Polygon':
-        coordinates = selected_feature_geometry['coordinates'][0][0]
-    elif selected_feature_geometry['type'] == 'MultiPolygon':
-        coordinates = selected_feature_geometry['coordinates'][0][0][0]
+        # Get coordinates for map centering based on geometry type
+        if selected_feature_geometry['type'] == 'Polygon':
+            coordinates = selected_feature_geometry['coordinates'][0][0]
+        elif selected_feature_geometry['type'] == 'MultiPolygon':
+            coordinates = selected_feature_geometry['coordinates'][0][0][0]
+        else:
+            coordinates = selected_feature_geometry['coordinates']  # For Point geometries
+
+        # Create and display map
+        m = folium.Map(location=[coordinates[1], coordinates[0]], zoom_start=12, width='100%', height='700')
+        folium.TileLayer(
+            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            attr='ArcGIS World Imagery'
+        ).add_to(m)
+
+        # Add all features to the map
+        for feature in features:
+            if feature['geometry']['type'] in ['Polygon', 'MultiPolygon']:
+                # Highlight selected feature
+                style = {'color': 'red', 'weight': 3} if feature == selected_feature else {'color': 'blue', 'weight': 2}
+                folium.GeoJson(
+                    feature,
+                    style_function=lambda x, style=style: style
+                ).add_to(m)
+        
+        st_folium(m, width=900, height=600)
+    
     else:
-        coordinates = selected_feature_geometry['coordinates']  # For Point geometries
-
-    # Create and display map
-    m = folium.Map(location=[coordinates[1], coordinates[0]], zoom_start=12, width='100%', height='700')
-    folium.TileLayer(
-    tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attr='ArcGIS World Imagery'
-    ).add_to(m)
-
-
-    
-    # Add all features to the map
-    for feature in feature_options:
-        if feature['geometry']['type'] in ['Polygon', 'MultiPolygon']:
-            # Highlight selected feature
-            style = {'color': 'red', 'weight': 3} if feature == selected_feature else {'color': 'blue', 'weight': 2}
-            folium.GeoJson(
-                feature,
-                style_function=lambda x, style=style: style
-            ).add_to(m)
-            
-    st_folium(m, width=900, height=600)
+        st.warning("Please select a valid feature to view details.")
 
     # Fix renaming
-    for feature in feature_options:
+    for feature in features:
         if 'pcode' in feature['properties']:
             feature['properties']['site_code'] = feature['properties'].pop('pcode')
         if 'gis_name' in feature['properties']:
             feature['properties']['name'] = feature['properties'].pop('gis_name')
 
     # Select features to export
+    st.write("### Select Features to Export")
+
+    # Selection for export
     selected_features_to_export = st.multiselect(
         "Select features to export:",
-        options=feature_labels,  # Use labels instead of feature objects
-        default=[]
+        options=all_feature_labels,
+        default=all_feature_labels if st.checkbox("Select All Features") else []
     )
 
     # Download selected features
@@ -278,16 +279,9 @@ if 'country_data' in st.session_state:
         else:
             filtered_output_file = f"{EXPORT_FOLDER}/{country_code}_filtered_polygons.geojson"
             filtered_features = [
-                feature for feature, label in zip(feature_options, feature_labels)
+                feature for feature, label in zip(features, all_feature_labels)
                 if label in selected_features_to_export
             ]
-
-            # Revert key names for saving the GeoJSON file
-            for feature in filtered_features:
-                if 'site_code' in feature['properties']:
-                    feature['properties']['pcode'] = feature['properties'].pop('site_code')
-                if 'name' in feature['properties']:
-                    feature['properties']['gis_name'] = feature['properties'].pop('name')
 
             filtered_data = {
                 "type": "FeatureCollection",
