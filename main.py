@@ -198,7 +198,7 @@ buffer_size_points = st.sidebar.slider("Select buffer size for points", min_valu
 
 buffer_size_poly = st.sidebar.slider("Select buffer size for polygons", min_value=0.001, max_value=0.1, value=0.0, step=0.001)
 
-if st.sidebar.button("Process Country"):
+if st.sidebar.button("Load country"):
     if country_code:
         st.write(f"Processing country: {country_code} with buffer size for points: {buffer_size_points}")
         country_data = process_country(country_code, buffer_size_points,buffer_size_poly)
@@ -234,7 +234,7 @@ if 'country_data' in st.session_state:
             coordinates = selected_feature_geometry['coordinates']  # For Point geometries
 
         # Create and display map
-        m = folium.Map(location=[coordinates[1], coordinates[0]], zoom_start=12, width='100%', height='700')
+        m = folium.Map(location=[coordinates[1], coordinates[0]], zoom_start=13, width='100%', height='700')
         folium.TileLayer(
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='ArcGIS World Imagery'
