@@ -1,0 +1,6 @@
+streamlit
+typing-extensions
+shapely
+requests
+folium
+streamlit-folium

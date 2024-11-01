@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "unhcr-geodata"
+version = "0.1.0"
+description = ""
+authors = ["belisards <adrianobf@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+shapely = "^2.0.6"
+folium = "^0.18.0"
+streamlit-folium = "^0.23.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
