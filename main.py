@@ -304,37 +304,6 @@ if 'country_data' in st.session_state:
         default=all_feature_labels if st.checkbox("Select All Features") else []
     )
 
-    # # Download selected features
-    # if st.button("Generate GeoJSON file"):
-    #     if not selected_features_to_export:
-    #         st.error("No feature selected. Please select at least one feature.")
-    #     else:
-    #         filtered_output_file = f"{EXPORT_FOLDER}/{country_code}_filtered_polygons.geojson"
-    #         filtered_features = [
-    #             feature for feature, label in zip(features, all_feature_labels)
-    #             if label in selected_features_to_export
-    #         ]
-
-    #         filtered_data = {
-    #             "type": "FeatureCollection",
-    #             "features": filtered_features
-    #         }
-
-    #         # display message
-    #         st.success(f"Exported {len(filtered_features)} features to {filtered_output_file}")
-
-    #         with open(filtered_output_file, 'w') as f:
-    #             json.dump(filtered_data, f, indent=4)
-
-    #         # Directly download the file
-    #         with open(filtered_output_file, 'r') as f:
-    #             st.download_button(
-    #                 label="Download Filtered GeoJSON",
-    #                 data=f,
-    #                 file_name=f"{country_code}_filtered_polygons.geojson",
-    #                 mime="application/geo+json"
-    #             )
-
 # Download selected features as GeoJSON and CSV with Bounding Boxes
     if st.button("Generate GeoJSON and CSV"):
         if not selected_features_to_export:
@@ -363,7 +332,7 @@ if 'country_data' in st.session_state:
             # Convert GeoJSON to download button
             with open(filtered_output_file, 'r') as f:
                 st.download_button(
-                    label="Download Filtered GeoJSON",
+                    label="Download GeoJSON (Polygons)",
                     data=f,
                     file_name=f"{country_code}_filtered_polygons.geojson",
                     mime="application/geo+json"
@@ -372,13 +341,18 @@ if 'country_data' in st.session_state:
             # Prepare bounding box data for each feature
             bounding_boxes = []
             for feature in filtered_features:
+                print(feature['properties'])
                 feature_id = feature['properties'].get('site_code', 'unknown')
+                feature_type = feature['properties'].get('feature_type', 'unknown')
+                feature_name = feature['properties'].get('name', 'unknown')
                 geometry = shape(feature['geometry'])
 
                 # Calculate bounding box
                 min_x, min_y, max_x, max_y = geometry.bounds
                 bounding_boxes.append({
                     "id": feature_id,
+                    "feature_type": feature_type,
+                    "feature_name": feature_name,
                     "min_x": min_x,  # min longitude
                     "min_y": min_y,  # min latitude
                     "max_x": max_x,  # max longitude
@@ -391,7 +365,7 @@ if 'country_data' in st.session_state:
             # Convert DataFrame to CSV and provide download button
             csv_data = df.to_csv(index=False)
             st.download_button(
-                label="Download Bounding Box CSV",
+                label="Download CSV (Bounding Box)",
                 data=csv_data,
                 file_name=f"{country_code}_bounding_boxes.csv",
                 mime="text/csv"
