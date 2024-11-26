@@ -103,7 +103,6 @@ def query_polygons(country_code: str,buffer_size_poly: float) -> Dict[str, Any]:
         return {}
 
 
-
 def gen_polygons(data: Dict[str, Any], buffer_size: float = 0.01) -> Dict[str, Any]:
     """
     Generates buffered polygons for each feature in the geojson-like data.
@@ -151,7 +150,8 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
         print("No data found for the country")
         return None
     else:
-        print(f"Successfully fetched {len(official_polygons['features'])} official polygons")
+        n_polygons = len(official_polygons['features'])
+        print(f"Successfully fetched {n_polygons} official polygons")
     
     # Add feature type to official polygon features
     for feature in official_polygons['features']:
@@ -164,7 +164,8 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
         print("No points data found")
         return official_polygons
     else:
-        print(f"Successfully fetched {len(points_data['features'])} points")
+        n_points = len(points_data['features'])
+        print(f"Successfully fetched {n_points} points")
     
     # Generate points from polygons
     generated_polygons: Dict[str, Any] = gen_polygons(points_data, buffer_size_points)
@@ -185,7 +186,7 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
         "features": country_polygons
     }
    
-    return country_data
+    return country_data, n_polygons, n_points
 
 #####################################
 # Streamlit App
@@ -201,16 +202,26 @@ buffer_size_poly = st.sidebar.slider("Select buffer size for polygons", min_valu
 if st.sidebar.button("Load country"):
     if country_code:
         st.write(f"Processing country: {country_code} with buffer size for points: {buffer_size_points}")
-        country_data = process_country(country_code, buffer_size_points,buffer_size_poly)
+        country_data, n_polygons, n_points = process_country(country_code, buffer_size_points,buffer_size_poly)
         if country_data:
             st.session_state['country_data'] = country_data
+            st.session_state['n_polygons'] = n_polygons
+            st.session_state['n_points'] = n_points
+            st.session_state['feature_count'] = len(country_data['features'])
     else:
         st.warning("Please select a country")
 
 # Display Features and Export Option
 if 'country_data' in st.session_state:
     features = st.session_state['country_data']['features']
-    
+    # st.sidebar.info(f"Number of features for {country_code}: {st.session_state['feature_count']}")
+    st.sidebar.info(
+        f"Number of features for {country_code}: {st.session_state['feature_count']}  \n"
+        f"Points: {st.session_state['n_points']}  \n"
+        f"Polygons: {st.session_state['n_polygons']}"
+    )
+
+
     # Display all features as a single list if filtering is not applicable
     all_feature_labels = [f"{feature['properties'].get('name', 'N/A')} ({feature['properties'].get('feature_type', 'N/A')})" for feature in features]
     
@@ -239,6 +250,7 @@ if 'country_data' in st.session_state:
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='ArcGIS World Imagery'
         ).add_to(m)
+       
 
         # Add all features to the map
         for feature in features:
