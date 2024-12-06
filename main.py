@@ -161,17 +161,18 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
     # Get points
     site_codes: List[str] = extract_site_codes(official_polygons)
     points_data: Optional[Dict[str, Any]] = query_points(country_code, site_codes)
+
     if not points_data or not points_data.get("features"):
         print("No points data found")
-        return official_polygons
+        n_points = 0
     else:
         n_points = len(points_data['features'])
         print(f"Successfully fetched {n_points} points")
     
-    # Generate points from polygons
+    # Generate polygons from points
     generated_polygons: Dict[str, Any] = gen_polygons(points_data, buffer_size_points)
     
-    # Add feature type to generated point polygons
+    # Add feature type to generated polygons
     for feature in generated_polygons.get("features", []):
         feature['properties']['feature_type'] = 'Point'
     
@@ -186,7 +187,7 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
         "type": "FeatureCollection",
         "features": country_polygons
     }
-   
+    
     return country_data, n_polygons, n_points
 
 #####################################
@@ -217,7 +218,6 @@ buffer_size_points = st.sidebar.slider("Select buffer size for points", min_valu
 buffer_size_poly = st.sidebar.slider("Select buffer size for polygons", min_value=0.001, max_value=0.1, value=0.0, step=0.001)
 
 # remove sidebarinfo if country_code changes
-
 
 if st.sidebar.button("Load country"):
     if country_code:
