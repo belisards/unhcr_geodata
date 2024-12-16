@@ -69,8 +69,9 @@ def query_points(country_code: str, site_codes: List[str]) -> Dict[str, Any]:
         response = session.get(url, params=params)
         response.raise_for_status()
         data: Dict[str, Any] = response.json()
-        # add metadata indicating it is a point
-        data['feature_type'] = 'Point'
+        # Add feature type
+        for feature in data.get("features", []):
+            feature['properties']['feature_type'] = 'Point'
         return data
     except requests.RequestException as e:
         print(f"Failed to fetch data: {e}")
@@ -90,13 +91,12 @@ def query_polygons(country_code: str,buffer_size_poly: float) -> Dict[str, Any]:
         response = session.get(BASE_URL + "wrl_prp_a_unhcr/FeatureServer/0/query", params=params)
         response.raise_for_status()
         data: Dict[str, Any] = response.json()
-        # add metadata indicating it is a polygon
-        data['feature_type'] = 'Polygon'
         # Add buffer to each geometry
         for feature in data.get('features', []):
             geometry = shape(feature['geometry'])
             buffered_geometry = geometry.buffer(buffer_size_poly)
             feature['geometry'] = mapping(buffered_geometry)
+            feature['properties']['feature_type'] = 'Polygon'
 
         return data
     except requests.RequestException as e:
@@ -154,10 +154,6 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
         n_polygons = len(official_polygons['features'])
         print(f"Successfully fetched {n_polygons} official polygons")
     
-    # Add feature type to official polygon features
-    for feature in official_polygons['features']:
-        feature['properties']['feature_type'] = 'Polygon'
-    
     # Get points
     site_codes: List[str] = extract_site_codes(official_polygons)
     points_data: Optional[Dict[str, Any]] = query_points(country_code, site_codes)
@@ -171,11 +167,7 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
     
     # Generate polygons from points
     generated_polygons: Dict[str, Any] = gen_polygons(points_data, buffer_size_points)
-    
-    # Add feature type to generated polygons
-    for feature in generated_polygons.get("features", []):
-        feature['properties']['feature_type'] = 'Point'
-    
+        
     # Merge polygons
     country_polygons: List[Dict[str, Any]] = official_polygons["features"]
     
@@ -241,10 +233,11 @@ if 'country_data' in st.session_state:
         f"Polygons: {st.session_state['n_polygons']}"
     )
 
-
     # Display all features as a single list if filtering is not applicable
     all_feature_labels = [f"{feature['properties'].get('name', 'N/A')} ({feature['properties'].get('feature_type', 'N/A')})" for feature in features]
-    
+    # filter only records with Polygon in the name
+    polygon_feature_labels = [feature for feature in all_feature_labels if 'Polygon' in feature]
+
     # Feature selection for viewing details
     selected_label = st.selectbox("Select a feature to view details:", all_feature_labels)
     
@@ -295,17 +288,32 @@ if 'country_data' in st.session_state:
             feature['properties']['name'] = feature['properties'].pop('gis_name')
 
     # Select features to export
-    st.write("### Select Features to Export")
+    st.write("### Select features to export")
 
-    # Selection for export
+    # Checkbox to select all features
+    select_all = st.checkbox("Select all")
+
+    # Checkbox to select only polygon features
+    select_polygons_only = st.checkbox("Select polygons only")
+
+    # Determine the default selection based on checkboxes
+    if select_all:
+        default_selection = all_feature_labels
+    elif select_polygons_only:
+        print(polygon_feature_labels)
+        default_selection = polygon_feature_labels
+    else:
+        default_selection = [] 
+
+    # Multi-select for selecting features to export
     selected_features_to_export = st.multiselect(
         "Select features to export:",
-        options=all_feature_labels,
-        default=all_feature_labels if st.checkbox("Select All Features") else []
+        options=all_feature_labels,  # Static list of all options
+        default=default_selection           # Dynamic default selection
     )
 
 # Download selected features as GeoJSON and CSV with Bounding Boxes
-    if st.button("Generate GeoJSON and CSV"):
+    if st.button("Export data"):
         if not selected_features_to_export:
             st.error("No feature selected. Please select at least one feature.")
         else:
