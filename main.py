@@ -258,7 +258,6 @@ def get_imagery_dates(bounds, zoom_level):
     except requests.exceptions.RequestException as e:
         st.sidebar.error(f"Error fetching imagery dates: {str(e)}")
         return {}
-    
 
 def initialize_session_state():
     for key, default in {
@@ -268,8 +267,6 @@ def initialize_session_state():
         'n_polygons': None,
         'n_points': None,
         'feature_count': None,
-        'bounds': None,
-        'zoom': None,
         'map_data': None
     }.items():
         if key not in st.session_state:
@@ -358,30 +355,6 @@ if 'country_data' in st.session_state:
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='ArcGIS World Imagery'
         ).add_to(m)
-        st.session_state.map_data = st_folium(m, width=1200, height=800)#, returned_objects=[])
-        
-        # display imagery dates
-        bounds = st.session_state.map_data['bounds']
-        zoom_level = st.session_state.map_data['zoom']
-
-        if zoom_level >= 12 and bounds:
-            transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
-            sw_x, sw_y = transformer.transform(bounds['_southWest']['lng'], bounds['_southWest']['lat'])
-            ne_x, ne_y = transformer.transform(bounds['_northEast']['lng'], bounds['_northEast']['lat'])
-            # print(sw_x, sw_y, ne_x, ne_y)
-
-            dates = get_imagery_dates((sw_x, sw_y, ne_x, ne_y), zoom_level)
-            if dates:
-                # change to str
-                dates = ", ".join(dates)
-                print(dates)
-                st.session_state.imagery_dates = dates
-                # write
-                st.sidebar.write(f"Imagery dates: {dates}")
-        else:
-            st.sidebar.write(f"Curent zoom level: {zoom_level} - Imagery dates are only available at zoom level 12 or higher.")
-
-       
 
         # Add all features to the map
         for feature in features:
@@ -393,7 +366,40 @@ if 'country_data' in st.session_state:
                     style_function=lambda x, style=style: style
                 ).add_to(m)
         
-        st_folium(m, width=900, height=600)
+        st.session_state.map_data = st_folium(m, width=1200, height=800)#, returned_objects=[])
+        
+        # display imagery dates
+        bounds = st.session_state.map_data['bounds']
+        
+        # Check if map_data and bounds exist
+        if st.session_state.map_data and 'bounds' in st.session_state.map_data:
+            bounds = st.session_state.map_data['bounds']
+            zoom_level = st.session_state.map_data['zoom']
+            if zoom_level >= 12 and bounds.get('_southWest') and bounds.get('_northEast'):
+                transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+                sw_lng = bounds['_southWest'].get('lng')
+                sw_lat = bounds['_southWest'].get('lat')
+                ne_lng = bounds['_northEast'].get('lng')
+                ne_lat = bounds['_northEast'].get('lat')
+                if None not in (sw_lng, sw_lat, ne_lng, ne_lat):
+                    sw_x, sw_y = transformer.transform(
+                        float(sw_lng),
+                        float(sw_lat)
+                    )
+                    ne_x, ne_y = transformer.transform(
+                        float(ne_lng),
+                        float(ne_lat)
+                    )
+                    dates = get_imagery_dates((sw_x, sw_y, ne_x, ne_y), zoom_level)
+                    if dates:
+                        st.session_state.imagery_dates = ", ".join(dates)
+                        st.sidebar.write(f"Imagery dates: {st.session_state.imagery_dates}")
+
+                else:
+                    st.sidebar.write(f"Current zoom level: {zoom_level} - Imagery dates are only available at zoom level 12 or higher.")
+
+                
+
     
     else:
         st.warning("Please select a valid feature to view details.")
@@ -418,7 +424,7 @@ if 'country_data' in st.session_state:
     if select_all:
         default_selection = all_feature_labels
     elif select_polygons_only:
-        print(polygon_feature_labels)
+        # print(polygon_feature_labels)
         default_selection = polygon_feature_labels
     else:
         default_selection = [] 
@@ -467,7 +473,7 @@ if 'country_data' in st.session_state:
             # Prepare bounding box data for each feature
             bounding_boxes = []
             for feature in filtered_features:
-                print(feature['properties'])
+                # print(feature['properties'])
                 feature_id = feature['properties'].get('site_code', 'unknown')
                 feature_type = feature['properties'].get('feature_type', 'unknown')
                 feature_name = feature['properties'].get('name', 'unknown')
