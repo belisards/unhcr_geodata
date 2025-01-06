@@ -340,17 +340,14 @@ if 'country_data' in st.session_state:
     if selected_feature is not None:
         # Extract geometry from selected feature
         selected_feature_geometry = selected_feature['geometry']
-
-        # Get coordinates for map centering based on geometry type
-        if selected_feature_geometry['type'] == 'Polygon':
-            coordinates = selected_feature_geometry['coordinates'][0][0]
-        elif selected_feature_geometry['type'] == 'MultiPolygon':
-            coordinates = selected_feature_geometry['coordinates'][0][0][0]
-        else:
-            coordinates = selected_feature_geometry['coordinates']  # For Point geometries
-
+        geometry = shape(selected_feature_geometry)
+        centroid = shape(selected_feature_geometry).centroid
+        # lat lon
+        centroid = (centroid.y, centroid.x)
+        print(centroid)
+        
         # Create and display map
-        m = folium.Map(location=[coordinates[1], coordinates[0]], zoom_start=13, width='100%', height='700')
+        m = folium.Map(location=centroid, zoom_start=13, width='100%', height='700')
         folium.TileLayer(
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='ArcGIS World Imagery'
