@@ -7,6 +7,7 @@ import json
 import folium
 import pandas as pd
 from streamlit_folium import st_folium
+from pyproj import Transformer
 
 # Constants
 BASE_URL: str = "https://gis.unhcr.org/arcgis/rest/services/core_v2/"
@@ -182,14 +183,108 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
     
     return country_data, n_polygons, n_points
 
+
+### get dates
+
+def convert_esri_feature_to_geojson(esri_feature):
+    """
+    Convert ESRI Feature to GeoJSON format
+    """
+    try:
+        geojson_feature = {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": []
+            },
+            "properties": esri_feature.get('attributes', {})
+        }
+        
+        if 'geometry' in esri_feature and 'rings' in esri_feature['geometry']:
+            geojson_feature['geometry']['coordinates'] = esri_feature['geometry']['rings']
+            
+        return geojson_feature
+    except Exception as e:
+        st.error(f"Error converting ESRI feature to GeoJSON: {str(e)}")
+        return None
+
+def get_imagery_dates(bounds, zoom_level):
+    """
+    Query ESRI World Imagery service for image dates within the given bounds.
+    """
+    if zoom_level < 12:
+        st.sidebar.info("Please zoom in to level 12 or higher to see imagery dates.")
+        return {}
+        
+    base_url = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/0/query"
+    
+    params = {
+        'f': 'json',
+        'spatialRel': 'esriSpatialRelIntersects',
+        'geometry': json.dumps({
+            'xmin': bounds[0],
+            'ymin': bounds[1],
+            'xmax': bounds[2],
+            'ymax': bounds[3],
+            'spatialReference': {'wkid': 102100}
+        }),
+        'geometryType': 'esriGeometryEnvelope',
+        'inSR': 102100,
+        'outSR': 3857,
+        'outFields': '*',
+        'returnGeometry': True
+    }
+    
+    try:
+        response = requests.get(base_url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        
+        if 'features' not in data:
+            st.sidebar.error("No imagery data received from the server.")
+            return {}
+            
+        dates_dict = {}
+        for feature in data['features']:
+            if 'attributes' in feature and 'SRC_DATE' in feature['attributes']:
+                date_str = str(feature['attributes']['SRC_DATE'])
+                formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+                geojson_feature = convert_esri_feature_to_geojson(feature)
+                if geojson_feature:
+                    dates_dict[formatted_date] = geojson_feature
+        # print(dates_dict.keys())
+        return dates_dict.keys()
+        
+    except requests.exceptions.RequestException as e:
+        st.sidebar.error(f"Error fetching imagery dates: {str(e)}")
+        return {}
+    
+
+def initialize_session_state():
+    for key, default in {
+        'imagery_dates': [],
+        'previous_country_code': None,
+        'country_data': None,
+        'n_polygons': None,
+        'n_points': None,
+        'feature_count': None,
+        'bounds': None,
+        'zoom': None,
+        'map_data': None
+    }.items():
+        if key not in st.session_state:
+            st.session_state[key] = default
+
 #####################################
 # Streamlit App
 st.title("UNHCR Geodata Extractor")
 
-# Store the previous country code in session state to detect changes
-if 'previous_country_code' not in st.session_state:
-    st.session_state['previous_country_code'] = None
+# # Store the previous country code in session state to detect changes
+# if 'previous_country_code' not in st.session_state:
+#     st.session_state['previous_country_code'] = None
 
+# Initialize session state
+initialize_session_state()
 
 country_list: List[str] = list_countries()
 
@@ -263,6 +358,29 @@ if 'country_data' in st.session_state:
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='ArcGIS World Imagery'
         ).add_to(m)
+        st.session_state.map_data = st_folium(m, width=1200, height=800)#, returned_objects=[])
+        
+        # display imagery dates
+        bounds = st.session_state.map_data['bounds']
+        zoom_level = st.session_state.map_data['zoom']
+
+        if zoom_level >= 12 and bounds:
+            transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+            sw_x, sw_y = transformer.transform(bounds['_southWest']['lng'], bounds['_southWest']['lat'])
+            ne_x, ne_y = transformer.transform(bounds['_northEast']['lng'], bounds['_northEast']['lat'])
+            # print(sw_x, sw_y, ne_x, ne_y)
+
+            dates = get_imagery_dates((sw_x, sw_y, ne_x, ne_y), zoom_level)
+            if dates:
+                # change to str
+                dates = ", ".join(dates)
+                print(dates)
+                st.session_state.imagery_dates = dates
+                # write
+                st.sidebar.write(f"Imagery dates: {dates}")
+        else:
+            st.sidebar.write(f"Curent zoom level: {zoom_level} - Imagery dates are only available at zoom level 12 or higher.")
+
        
 
         # Add all features to the map

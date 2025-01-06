@@ -10,6 +10,7 @@ python = "^3.10"
 shapely = "^2.0.6"
 folium = "^0.18.0"
 streamlit-folium = "^0.23.1"
+pyproj = "^3.7.0"
 
 
 [build-system]
