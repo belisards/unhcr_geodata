@@ -77,7 +77,7 @@ def query_points(country_code: str, site_codes: List[str]) -> Dict[str, Any]:
             if 'update_date' in feature['properties']:
                 update_date = feature['properties']['update_date']
                 feature['properties']['update_date'] = pd.to_datetime(update_date, unit='ms').strftime('%Y-%m-%d')
-                print(feature['properties']['update_date'])
+                #print(feature['properties']['update_date'])
         return data
     except requests.RequestException as e:
         print(f"Failed to fetch data: {e}")
@@ -108,7 +108,7 @@ def query_polygons(country_code: str,buffer_size_poly: float = 0) -> Dict[str, A
             if 'update_date' in feature['properties']:
                 update_date = feature['properties']['update_date']
                 feature['properties']['update_date'] = pd.to_datetime(update_date, unit='ms').strftime('%Y-%m-%d')
-                print(feature['properties']['update_date'])
+                # print(feature['properties']['update_date'])
         return data
     except requests.RequestException as e:
         st.error(f"Failed to fetch data: {e}")
@@ -354,7 +354,7 @@ if 'country_data' in st.session_state:
         centroid = shape(selected_feature_geometry).centroid
         # lat lon
         centroid = (centroid.y, centroid.x)
-        print(centroid)
+        # print(centroid)
         
         # Create and display map
         m = folium.Map(location=centroid, zoom_start=13, width='100%', height='700')
@@ -400,7 +400,10 @@ if 'country_data' in st.session_state:
                     dates = get_imagery_dates((sw_x, sw_y, ne_x, ne_y), zoom_level)
                     if dates:
                         st.session_state.imagery_dates = ", ".join(dates)
-                        st.sidebar.write(f"Imagery dates: {st.session_state.imagery_dates}")
+                        st.sidebar.write(f"Satellite imagery dates: {st.session_state.imagery_dates}")
+                    # show date of last update of the selected polygon
+                    if 'update_date' in selected_feature['properties']:
+                        st.sidebar.write(f"{selected_label} - Polygon last updated: {selected_feature['properties']['update_date']}")
 
                 else:
                     st.sidebar.write(f"Current zoom level: {zoom_level} - Imagery dates are only available at zoom level 12 or higher.")
