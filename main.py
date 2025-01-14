@@ -98,12 +98,12 @@ def query_polygons(country_code: str,buffer_size_poly: float = 0) -> Dict[str, A
         response.raise_for_status()
         data: Dict[str, Any] = response.json()
         for feature in data.get('features', []):
+            feature['properties']['feature_type'] = 'Polygon'
             if buffer_size_poly > 0:
                 # Add buffer to each geometry
                 geometry = shape(feature['geometry'])
                 buffered_geometry = geometry.buffer(buffer_size_poly)
                 feature['geometry'] = mapping(buffered_geometry)
-                feature['properties']['feature_type'] = 'Polygon'
             # convert update_date from unix timestamp to human-readable format
             if 'update_date' in feature['properties']:
                 update_date = feature['properties']['update_date']
@@ -190,7 +190,13 @@ def process_country(country_code: str, buffer_size_points: float, buffer_size_po
         "type": "FeatureCollection",
         "features": country_polygons
     }
-    
+    # Process features before returning country_data
+    for feature in points_data.get('features', []):
+        if 'pcode' in feature['properties']:
+            feature['properties']['site_code'] = feature['properties'].pop('pcode')
+        if 'gis_name' in feature['properties']:
+            feature['properties']['name'] = feature['properties'].pop('gis_name')
+
     return country_data, n_polygons, n_points
 
 
@@ -327,7 +333,7 @@ if st.sidebar.button("Load country"):
         st.warning("Please select a country")
 
 # Display Features and Export Option
-if 'country_data' in st.session_state:
+if 'country_data' in st.session_state and st.session_state['country_data']:
     features = st.session_state['country_data']['features']
     st.sidebar.info(
         f"Number of features for {country_code}: {st.session_state['feature_count']}  \n"
@@ -403,7 +409,7 @@ if 'country_data' in st.session_state:
                         st.sidebar.write(f"Satellite imagery dates: {st.session_state.imagery_dates}")
                     # show date of last update of the selected polygon
                     if 'update_date' in selected_feature['properties']:
-                        st.sidebar.write(f"{selected_label} - Polygon last updated: {selected_feature['properties']['update_date']}")
+                        st.sidebar.write(f"{selected_label} - last updated: {selected_feature['properties']['update_date']}")
 
                 else:
                     st.sidebar.write(f"Current zoom level: {zoom_level} - Imagery dates are only available at zoom level 12 or higher.")
@@ -415,11 +421,11 @@ if 'country_data' in st.session_state:
         st.warning("Please select a valid feature to view details.")
 
     # Fix renaming
-    for feature in features:
-        if 'pcode' in feature['properties']:
-            feature['properties']['site_code'] = feature['properties'].pop('pcode')
-        if 'gis_name' in feature['properties']:
-            feature['properties']['name'] = feature['properties'].pop('gis_name')
+    # for feature in features:
+    #     if 'pcode' in feature['properties']:
+    #         feature['properties']['site_code'] = feature['properties'].pop('pcode')
+    #     if 'gis_name' in feature['properties']:
+    #         feature['properties']['name'] = feature['properties'].pop('gis_name')
 
     # Select features to export
     st.write("### Select features to export")
