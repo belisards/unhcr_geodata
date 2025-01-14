@@ -62,7 +62,7 @@ def query_points(country_code: str, site_codes: List[str]) -> Dict[str, Any]:
     url: str = f"{BASE_URL}wrl_prp_p_unhcr_PoC/FeatureServer/0/query"
     params: Dict[str, str] = {
         'where': where_clause,
-        'outFields': 'pcode,gis_name',
+        'outFields': 'pcode,gis_name,update_date,created_date',
         'f': 'geojson',
         'returnGeometry': 'true'
     }
@@ -73,16 +73,21 @@ def query_points(country_code: str, site_codes: List[str]) -> Dict[str, Any]:
         # Add feature type
         for feature in data.get("features", []):
             feature['properties']['feature_type'] = 'Point'
+            # convert update_date from unix timestamp to human-readable format
+            if 'update_date' in feature['properties']:
+                update_date = feature['properties']['update_date']
+                feature['properties']['update_date'] = pd.to_datetime(update_date, unit='ms').strftime('%Y-%m-%d')
+                print(feature['properties']['update_date'])
         return data
     except requests.RequestException as e:
         print(f"Failed to fetch data: {e}")
         return {}
 
 ### GET OFFICIAL POLYGONS
-def query_polygons(country_code: str,buffer_size_poly: float) -> Dict[str, Any]:
+def query_polygons(country_code: str,buffer_size_poly: float = 0) -> Dict[str, Any]:
     params: Dict[str, Any] = {
         'where': f"site_code LIKE '{country_code}%'",
-        'outFields': 'site_code, name',
+        'outFields': 'site_code, name,update_date,created_date',
         'f': 'geojson',
         'returnGeometry': 'true',
         'geometryType': 'esriGeometryPolygon',
@@ -92,13 +97,18 @@ def query_polygons(country_code: str,buffer_size_poly: float) -> Dict[str, Any]:
         response = session.get(BASE_URL + "wrl_prp_a_unhcr/FeatureServer/0/query", params=params)
         response.raise_for_status()
         data: Dict[str, Any] = response.json()
-        # Add buffer to each geometry
         for feature in data.get('features', []):
-            geometry = shape(feature['geometry'])
-            buffered_geometry = geometry.buffer(buffer_size_poly)
-            feature['geometry'] = mapping(buffered_geometry)
-            feature['properties']['feature_type'] = 'Polygon'
-
+            if buffer_size_poly > 0:
+                # Add buffer to each geometry
+                geometry = shape(feature['geometry'])
+                buffered_geometry = geometry.buffer(buffer_size_poly)
+                feature['geometry'] = mapping(buffered_geometry)
+                feature['properties']['feature_type'] = 'Polygon'
+            # convert update_date from unix timestamp to human-readable format
+            if 'update_date' in feature['properties']:
+                update_date = feature['properties']['update_date']
+                feature['properties']['update_date'] = pd.to_datetime(update_date, unit='ms').strftime('%Y-%m-%d')
+                print(feature['properties']['update_date'])
         return data
     except requests.RequestException as e:
         st.error(f"Failed to fetch data: {e}")
